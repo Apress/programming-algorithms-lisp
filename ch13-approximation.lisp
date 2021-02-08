@@ -22,45 +22,6 @@
       (incf rez (earth-dist (aref path i) (aref path (1+ i)))))
     rez))
 
-;; TODO add tests
-;; (defparameter *wp-link* "https://en.wikipedia.org/w/index.php?title=List_of_state_and_territorial_capitols_in_the_United_States&action=edit&section=1")
-;; (defparameter *cs*
-;;   (rtl:with ((raw (drakma:http-request *wp-link*))
-;;              (coords-regex (ppcre:create-scanner
-;;                             "\\{\\{coord\\|(\\d+)\\|(\\d+)\\|([.\\d]+)\\|.\\|(\\d+)\\|(\\d+)\\|([.\\d]+)\\|.\\|type"))
-;;              (capitals (list)))
-;;     (flet ((dms->rad (vec off)
-;;              (* (/ pi 180)
-;;                 (+     (aref vec (+ off 0))
-;;                        (/ (aref vec (+ off 1)) 60)
-;;                        (/ (aref vec (+ off 2)) 3600)))))
-;;       (dolist (line (rtl:split
-;;                      #\Newline
-;;                      (rtl:slice raw
-;;                                 (search "{| class=\"wikitable sortable\"" 
-;;                                         raw)
-;;                                 (search "</textarea><div class='editOptions'>"
-;;                                         raw))))
-;;         (when (and (rtl:starts-with "|" line)
-;;                    (search "{{coord" line))
-;;           (rtl:with ((_ coords (ppcre:scan-to-strings coords-regex line))
-;;                      (coords (rtl:map* 'read-from-string coords)))
-;;             (push (make-city
-;;                    :name (slice line (position-if 'alpha-char-p line)
-;;                                 (position-if (lambda (ch)
-;;                                                (member ch '(#\] #\|)))
-;;                                              line :start 1))
-;;                    :lat (dms->rad coords 0)
-;;                    :lon (dms->rad coords 3))
-;;                   capitals)))))
-;;             (coerce capitals 'vector)))
-;; CL-USER> (path-length *cs*)
-;; 9.451802301259182d7
-;; CL-USER> (path-length (rtl:shuffle *cs*))
-;; 9.964776273250546d7
-;; CL-USER> (path-length (rtl:shuffle *cs*))
-;; 1.009761841183094d8
-
 (defun random-search (path n)
   (let ((min (path-length path))
         (arg path))
@@ -116,37 +77,17 @@
     (values arg
             min)))
 
-;; TODO (deftest approx-search ()
-;; CL-USER> (random-search *cs* 1000)
-;; (#S(CITY :NAME "Atlanta" :LAT 0.5890359059538811d0 ...)
-;;    #S(CITY :NAME "Montpelier, Vermont" :LAT 0.772521512027179d0 ...) ...)
-;; 7.756170773802838d7
-;; CL-USER> (time (random-search *cs* 1000000))
-;; Evaluation took:
-;; 31.338 seconds of real time
-;; ...
-;; (#S(CITY :NAME "Boise, Idaho" :LAT 0.7612723873453388d0 ...)
-;;    #S(CITY :NAME "Helena, Montana" :LAT 0.813073800024579d0 ...) ...)
-;; 6.746660953705506d7
-;; CL-USER> (local-search *cs* '2-opt)
-;; #(#S(CITY :NAME "Jackson, Mississippi" :LAT 0.5638092223095238d0 ...)
-;;   #S(CITY :NAME "Baton Rouge, Louisiana" :LAT 0.5315762080646039d0 ...) ...)
-;; CL-USER> (random-search *cs* 111)
-;; #(#S(CITY :NAME "Boise, Idaho" :LAT 0.7612723873453388d0 ...)
-;;   #S(CITY :NAME "Springfield, Illinois" :LAT 0.6946151297363367d0 ...) ...)
-;; 7.522044767585556d7
-;; CL-USER> (random-search *cs* 444)
-;; #(#S(CITY :NAME "Lansing, Michigan" :LAT 0.745844229097319d0 ...)
-;;   #S(CITY :NAME "Springfield, Illinois" :LAT 0.6946151297363367d0 ...) ...)
-;; 7.537249874357127d7
-;; CL-USER> (time (multi-local-search *cs* 1000))
-;; Evaluation took:
-;; 22.394 seconds of real time
-;; ...
-;; #(#S(CITY :NAME "Atlanta" :LAT 0.5890359059538811d0 ...)
-;;   #S(CITY :NAME "Montgomery, Alabama" :LAT 0.5650930224896327d0 ...) ...)
-;; 2.8086843039667137d7
+;; TODO add tests for searches
 
+
+(defun size (set)
+  (length set))
+
+(defun empty? (set)
+  (null set))
+
+(defun remove-item (set item)
+  (rtl:removef item set))
 
 (defun sample (n set &key (with-replacement t))
   (loop :repeat n
@@ -160,13 +101,13 @@
   ;; here, DIST is a hash-table with keys being items
   ;; and values — their probabilities
   (let ((scale (reduce '+ (rtl:vals dist))))
-    (loop :repeat n :collect
-                    (let ((r (* scale (random 1.0)))
-                          (acc 0))
-                      (rtl:dotable (k v dist)
-                                   (incf acc v)
-                                   (when (>= acc r)
-                                     (return k)))))))
+    (loop :repeat n
+          :collect (let ((r (* scale (random 1.0)))
+                         (acc 0))
+                     (rtl:dotable (k v dist)
+                       (incf acc v)
+                       (when (>= acc r)
+                         (return k)))))))
 
 (defun reservoir-sample (n stream)
   (let ((rez (make-array n :initial-element nil)))  ; reservoir
@@ -184,23 +125,24 @@
       ;; we'll use an input stream and read items from it
       (end-of-file () rez))))
 
-;; TODO (deftest sampling ()
-;; CL-USER> (with-input-from-string (in "foo foo foo foo bar bar baz")
-;;            (reservoir-sample 3 in))
-;; #(BAR BAZ FOO)
-;; CL-USER> (with-input-from-string (in "foo foo foo foo bar bar baz")
-;;            (reservoir-sample 3 in))
-;; #(FOO FOO FOO)
-;; CL-USER> (with-input-from-string (in "foo foo foo foo bar bar baz")
-;;            (reservoir-sample 3 in))
-;; #(BAZ FOO FOO)
-;; CL-USER> (with-input-from-string (in (format nil "~{~A ~}"
-;;                                              (loop :for i :from 0 :to 100
-;;                                                    :collect i)))
-;;            (reservoir-sample 10 in))
-;; #(30 42 66 68 76 5 22 39 51 24)  ; note that 5 stayed at the same position
-;;                                         ; where it was placed initially
-
+(deftest sampling ()
+  (let ((42-count 0)
+        (foo-count 0)
+        (bar-count 0)
+        (baz-count 0)
+        (count 10000))
+    (loop :repeat count :do
+      (let ((sample (sample 10 (rtl:range 0 100)))
+            (rsample (with-input-from-string (in "foo foo foo foo bar bar baz")
+                       (reservoir-sample 3 in))))
+        (incf 42-count (count 42 sample))
+        (incf foo-count (count 'foo rsample))
+        (incf bar-count (count 'bar rsample))
+        (incf baz-count (count 'baz rsample))))
+    (should be approx= 1/100 (/ 42-count (* 10 count)))
+    (should be approx= 4/7 (/ foo-count (* 3 count)))
+    (should be approx= 2/7 (/ bar-count (* 3 count)))
+    (should be approx= 1/7 (/ baz-count (* 3 count)))))
 
 
 ;; code prototypes

@@ -27,15 +27,12 @@
 (defun mb-length (string)
   (count 1 (mbs-bitmap string)))
 
-;; TODO (deftest mb-length ()
-
 (defun naive-match (pat str)
   (dotimes (i (- (1+ (length str)) (length pat)))
-    (when (= (mismatch pat (rtl:slice str i))
-             (length pat))
-      (return-from naive-match i))))
-
-;; TODO (deftest naive-match ()
+    (let ((mis (mismatch pat (rtl:slice str i))))
+      (when (or (null mis)
+                (= mis (length pat)))
+        (return-from naive-match i)))))
 
 (defun kmp-table (pat)
   (let ((rez (make-array (length pat)))
@@ -63,22 +60,20 @@
           ;; if the current chars match
           (if (= (1+ p) (length pat))
               ;; if we reached the end of the pattern - success
-              (return (- s p)))
-          ;; otherwise, match the subsequent chars
-          (setf p (1+ p)
-                s (1+ s)))
-      ;; if the characters don't match
-      (if (= -1 (aref ff p))
-          ;; shift the pattern for the whole length 
-          (setf p 0
-                ;; and skip to the next char in the string
-                s (1+ s))
-          ;; try matching the current char again,
-          ;; shifting the pattern to align the prefix
-          ;; with the already matched part
-          (setf p (aref ff p))))))
-
-;; TODO (deftest kmp-match ()
+              (return (- s p))
+              ;; otherwise, match the subsequent chars
+              (setf p (1+ p)
+                    s (1+ s)))
+          ;; if the characters don't match
+          (if (= -1 (aref ff p))
+              ;; shift the pattern for the whole length 
+              (setf p 0
+                    ;; and skip to the next char in the string
+                    s (1+ s))
+              ;; try matching the current char again,
+              ;; shifting the pattern to align the prefix
+              ;; with the already matched part
+              (setf p (aref ff p)))))))
 
 (defun rk-match (pat str)
   (let ((len (length pat))
@@ -86,10 +81,10 @@
     (loop :for i :from len :to (length str)
           :for beg := (- i len)
           :for shash := (rk-hash (rtl:slice str 0 len))
-            :then (rk-rehash len shash
-                             (char str beg) (char str i))
+            :then (rk-rehash shash len
+                             (char str (1- beg)) (char str (1- i)))
           :when (and (= phash shash)
-                     (string= pat (rtl:slice str beg len)))
+                     (string= pat (rtl:slice str beg (+ beg len))))
             :collect beg)))
 
 (defun rk-hash-naive (str)
@@ -104,20 +99,34 @@
     (rem rez 101)))
 
 (defun rk-rehash (hash len ch1 ch2)
-  (rem (+ (* (+ hash 101
+  (rem (+ (* 256
+             (+ hash 101
                 (- (rem (* (char-code ch1)
-                           (expt 256 (1- len)))
-                        101)))
-             256)
-          (char-code ch2))
+                           (loop :repeat (max 0 (- len 2))
+                                 :with val := 256
+                                 :do (setf val (rem (* val 256) 101))
+                                 :finally (return val)))
+                        101))))
+           (char-code ch2))
        101))
 
-;; TODO (deftest rk-match ()
+(deftest match ()
+  (should be = 0 (naive-match "foo" "foobar"))
+  (should be = 3 (naive-match "bar" "foobar"))
+  (should be null (naive-match "baz" "foobar"))
+  (should be = 0 (kmp-match "foo" "foobar"))
+  (should be = 3 (kmp-match "bar" "foobar"))
+  (should be null (kmp-match "baz" "foobar"))
+  (should be equal '(0) (rk-match "foo" "foobar"))
+  (should be equal '(3) (rk-match "bar" "foobar"))
+  (should be equal '(0 6) (rk-match "bar" "barfoobar"))
+  (should be null (rk-match "baz" "foobar")))
 
 (defun re-match (regex text)
   "Search for REGEX anywhere in TEXT."
   (if (rtl:starts-with "^" regex)
-      (match-here (rtl:slice regex 1) text)
+      (when (> (length regex) 1)
+        (match-here (rtl:slice regex 1) text))
       (dotimes (i (length text))
         (when (match-here regex (rtl:slice text i))
           (return t)))))
@@ -132,7 +141,7 @@
         ((string= "$" regex)
          (= 0 (length text)))
         ((and (> (length text) 0)
-              (member (char text 0) (list #\. (char text 0)))
+              (member (char regex 0) (list #\. (char text 0)))
               (match-here (rtl:slice regex 1) (rtl:slice text 1))))))
 
 (defun match-star (c regex text)
@@ -144,7 +153,16 @@
                  (member c (list #\. (char text 0))))
       (return))))
 
-;; TODO (deftest re-match ()
+(deftest re-match ()
+  (should be null (re-match "foo" "bar"))
+  (should be rtl:true (re-match "foo" "foo"))
+  (should be rtl:true (re-match "bar" "foobar"))
+  (should be rtl:true (re-match "f.o" "foo"))
+  (should be rtl:true (re-match "^foo" "foobar"))
+  (should be null (re-match "^bar" "foobar"))
+  (should be null (re-match "foo$" "foobar"))
+  (should be rtl:true (re-match "bar$" "foobar"))
+  (should be rtl:true (re-match "fo*" "foobar")))
 
 (define-condition check-start-anchor () ())
 
@@ -233,9 +251,10 @@
 
 (defmacro grammar (&rest rules)
   `(make-grammar
-    :rules (pairs->ht (mapcar (lambda (rule)
-                                (rtl:pair (nthcdr 2 rule) (first rule)))
-                              ',rules))
+    :rules (rtl:pairs->ht (mapcar (lambda (rule)
+                                    (rtl:pair (nthcdr 2 rule) (first rule)))
+                                  ',rules)
+                          :test 'equal)
     :max-length
     (let ((max 0))
       (dolist (rule ',rules)
@@ -256,46 +275,28 @@
                    (pop stack))
                  ;; shift
                  (push (pop queue) stack))
-          :finally (return (find-rule stack grammar)))))
+      :finally (return (find-rule stack grammar)))))
 
 (defun find-rule (stack grammar)
   (let (prefix)
     (loop :for item in stack
           :repeat (grammar-max-length grammar) :do
-            (push (first (rtl:mklist item)) prefix)
-            (rtl:when-it (rtl:? grammar 'rules prefix)
-                         ;; otherwise parsing will fail with a stack
-                         ;; containing a number of partial subtrees
-                         (return (cons rtl:it (reverse (subseq stack 0 (length prefix)))))))))
+       (push (first (rtl:mklist item)) prefix)
+       (rtl:when-it (rtl:? grammar 'rules prefix)
+         ;; otherwise parsing will fail with a stack
+         ;; containing a number of partial subtrees
+         (return (cons rtl:it (reverse (subseq stack 0 (length prefix)))))))))
 
-;; TODO (deftest parse ()
-;; CL-USER> (parse (print (grammar (S -> NP VP |.|)
-;;                                 (NP -> DET ADJ NOUN)
-;;                                 (NP -> PRP$ NOUN)
-;;                                 (VP -> VERB VP)
-;;                                 (VP -> VERB NP)))
-;;                 '(DET ADJ NOUN VERB VERB PRP$ NOUN |.|))
-;; #S(GRAMMAR
-;;    :RULES #{
-;;    '(NP VP |.|) S
-;;    '(DET ADJ NOUN) NP
-;;    '(PRP$ NOUN) NP
-;;    '(VERB VP) VP
-;;    '(VERB NP) VP
-;;    }
-;;    :MAX-LENGTH 3)
-;; NIL 
-;; (DET) 
-;; (ADJ DET) 
-;; (NOUN ADJ DET) 
-;; ((NP DET ADJ NOUN)) 
-;; (VERB (NP DET ADJ NOUN)) 
-;; (VERB VERB (NP DET ADJ NOUN)) 
-;; (PRP$ VERB VERB (NP DET ADJ NOUN)) 
-;; (NOUN PRP$ VERB VERB (NP DET ADJ NOUN)) 
-;; ((NP PRP$ NOUN) VERB VERB (NP DET ADJ NOUN)) 
-;; ((VP VERB (NP PRP$ NOUN)) VERB (NP DET ADJ NOUN)) 
-;; ((VP VERB (VP VERB (NP PRP$ NOUN))) (NP DET ADJ NOUN)) 
-;; (S (NP DET ADJ NOUN) (VP VERB (VP VERB (NP PRP$ NOUN))) |.|)
-
-
+(deftest parse ()
+  (let ((*standard-output* (make-broadcast-stream)))
+    (should be equal '(S (NP DET ADJ NOUN)
+                         (VP VERB
+                             (VP VERB
+                                 (NP PRP$ NOUN)))
+                         |.|)
+            (parse (grammar (S -> NP VP |.|)
+                            (NP -> DET ADJ NOUN)
+                            (NP -> PRP$ NOUN)
+                            (VP -> VERB VP)
+                            (VP -> VERB NP))
+                   '(DET ADJ NOUN VERB VERB PRP$ NOUN |.|)))))

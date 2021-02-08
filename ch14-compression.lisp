@@ -76,12 +76,12 @@
                                        ; of get# with the value of 0
     ;; heapsort the characters based on their frequency
     (rtl:dotable (char count counts)
-      (heap-push (pair char count) q))
+      (heap-push (rtl:pair char count) q))
     ;; build the tree
     (dotimes (i (1- (heap-size q)))
       (rtl:with (((lt cl) (heap-pop q))
                  ((rt cr) (heap-pop q)))
-        (heap-push (pair (list lt rt) (+ cl cr))
+        (heap-push (rtl:pair (list lt rt) (+ cl cr))
                    q)))
     ;; traverse the tree in DFS manner
     ;; encoding the path to each leaf node as a bit-vector
@@ -107,7 +107,7 @@
           hts))
 
 (defun huffman-encode2 (envocab str)
-  (let ((vecs (map 'vector (lambda (ch) (get# ch envocab))
+  (let ((vecs (map 'vector (lambda (ch) (rtl:get# ch envocab))
                    str))
         (total-size 0))
     (rtl:dovec (vec vecs)
@@ -198,8 +198,8 @@
   (logand num #.(1- (expt 2 32))))
 
 (defun bitvec->int (bits)
-  (reduce (lambda (bit1 bit2) (+ (ash bit1 1) bit2)
-            bits)))
+  (reduce (lambda (bit1 bit2) (+ (ash bit1 1) bit2))
+          bits))
 
 (defun arithm-decode (dedict vec size)
   (rtl:with ((len (length vec))
@@ -218,58 +218,55 @@
                      lo (round (+ lo (* plo range)))
                      hi (round (+ lo (* phi range) -1)))
               (return))))
-                (print (list val lo hi))
-                (loop
-                  (cond ((< hi #.(expt 2 31))
-                         ;; do nothing
-                         )
-                        ((>= lo #.(expt 2 31))
-                         (decf lo #.(expt 2 31))
-                         (decf hi #.(expt 2 31))
-                         (decf val #.(expt 2 31)))
-                        ((and (>= lo #.(expt 2 30))
-                              (< hi #.(* 3 (expt 2 30))))
-                         (decf lo #.(expt 2 30))
-                         (decf hi #.(expt 2 30))
-                         (decf val #.(expt 2 30)))
-                        (t
-                         (return)))
-                  (psetf lo (mask32 (ash lo 1))
-                         hi (mask32 (1+ (ash hi 1)))
-                         val (mask32 (+ (ash val 1)
-                                        (if (< off len)
-                                            (aref vec off)
-                                            0)))
-                         off (1+ off)))))
+        (loop
+          (cond ((< hi #.(expt 2 31))
+                 ;; do nothing
+                 )
+                ((>= lo #.(expt 2 31))
+                 (decf lo #.(expt 2 31))
+                 (decf hi #.(expt 2 31))
+                 (decf val #.(expt 2 31)))
+                ((and (>= lo #.(expt 2 30))
+                      (< hi #.(* 3 (expt 2 30))))
+                 (decf lo #.(expt 2 30))
+                 (decf hi #.(expt 2 30))
+                 (decf val #.(expt 2 30)))
+                (t
+                 (return)))
+          (psetf lo (mask32 (ash lo 1))
+                 hi (mask32 (1+ (ash hi 1)))
+                 val (mask32 (+ (ash val 1)
+                                 (if (< off len)
+                                     (aref vec off)
+                                     0)))
+                 off (1+ off)))))
     rez))
 
-;; TODO (deftest compression ()
-;; CL-USER> (arithm-encode #h(#\e 1/14
-;;                                #\a 1/14
-;;                                #\h 1/14
-;;                                #\i 2/14
-;;                                #\s 3/14
-;;                                #\t 3/14
-;;                                #\Space 3/14)
-;;                         "this is a test")
-;; #*100110110100001110000001
-;; CL-USER> (arithm-encode-correct #h(#\e '(0 1/14)
-;;                                        #\a '(1/14 1/7)
-;;                                        #\h '(1/7 3/14)
-;;                                        #\i '(3/14 5/14)
-;;                                        #\s '(5/14 4/7)
-;;                                        #\t '(4/7 11/14)
-;;                                        #\Space '(11/14 1))
-;;                                 "this is a test")
-;; #*10011011010000111000001101010110010101
-;; CL-USER> (let ((vocab #h(#\e '(0 1/14)
-;;                              #\a '(1/14 1/7)
-;;                              #\h '(1/7 3/14)
-;;                              #\i '(3/14 5/14)
-;;                              #\s '(5/14 4/7)
-;;                              #\t '(4/7 11/14)
-;;                              #\Space '(11/14 1))))
-;;            (arithm-decode vocab
-;;                           (arithm-encode-correct vocab "this is a test")
-;;                           14))
-;; "this is a test"
+(deftest compression ()
+  (rtl:with (((dict1 dict2)
+              (mapcar (lambda (d)
+                        (let ((dict (make-hash-table)))
+                          (loop :for (k v) :on d :by #'cddr
+                                :do (rtl:sethash k dict v))
+                          dict))
+                      '((#\e 1/14
+                         #\a 1/14
+                         #\h 1/14
+                         #\i 2/14
+                         #\s 3/14
+                         #\t 3/14
+                         #\Space 3/14)
+                        (#\e (0 1/14)
+                         #\a (1/14 1/7)
+                         #\h (1/7 3/14)
+                         #\i (3/14 5/14)
+                         #\s (5/14 4/7)
+                         #\t (4/7 11/14)
+                         #\Space (11/14 1))))))
+    (should be equal #*100110110100001110000001
+            (arithm-encode dict1 "this is a test"))
+    (should be equal #*10011011010000111000001101010110010101
+          (arithm-encode-correct dict2 "this is a test"))
+    (should be string= "this is a test"
+            (arithm-decode dict2 (arithm-encode-correct dict2 "this is a test")
+                           14))))

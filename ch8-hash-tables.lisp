@@ -20,7 +20,7 @@
   (should be = 0.9345271 (hash-collision-prob 10 20))
   (should be = 0.37184352 (hash-collision-prob 10 100))
   (should be = 0.004491329 (hash-collision-prob 10 10000))
-  (should be = 0.63 (hash-collision-prob 20 200)))  ; TODO
+  (should be approx= 0.63 (hash-collision-prob 20 200)))
 
 (defstruct ht
   array
@@ -78,9 +78,10 @@
   (rtl:when-it (nth-value 1 (ht-get key ht))
     (setf (rtl:? ht 'array rtl:it) nil)
     ;; return the index to indicate that the item was found
-    it))
+    rtl:it))
 
-;; TODO (deftest ht ()
+;; TODO add ht tests
+
 
 (defparameter *fnv-primes*
   '((32 . 16777619)
@@ -105,8 +106,8 @@
     rez))
 
 (defun fnv-1a-str (str)
-  (let ((rez (assoc1 32 *fnv-offsets*))
-        (prime (assoc1 32 *fnv-primes*)))
+  (let ((rez (rtl:assoc1 32 *fnv-offsets*))
+        (prime (rtl:assoc1 32 *fnv-primes*)))
     (rtl:dovec (char str)
                (setf rez (ldb (byte 32 0)
                               (* (logxor rez (char-code char))
@@ -116,16 +117,18 @@
 (defun djb2-str (str)
   (let ((rez 5381))  ; a DJB2 prime number
     (rtl:dovec (char str)
-               (setf rez (ldb 32 (+ (char-code char)
-                                    (ldb (byte 32 0)
-                                         (+ (ash rez 5)
-                                            rez))))))
+      (setf rez (ldb (byte 32 0)
+                     (+ (char-code char)
+                         (ldb (byte 32 0)
+                              (+ (ash rez 5)
+                                  rez))))))
     rez))
 
-;; TODO (deftest hash-functions ()
+(deftest hash-functions ()
+  )
 
 (defstruct default-hash-table
-  table
+  (table (make-hash-table))
   default-value)
 
 (defun gethash-default (key ht)
@@ -134,7 +137,9 @@
 (defmethod generic-elt ((kv default-hash-table) key &rest keys)
   (gethash-default key kv))
 
-;; TODO (deftest default-ht ()
+(deftest default-hash-table ()
+  (should be = 42
+          (gethash-default :foo (make-default-hash-table :default-value 42))))
 
 (defstruct linked-hash-table-item
   key
@@ -168,7 +173,16 @@
                            (setf (rtl:? ht 'tail 'next) new)
                            new))))))
 
-;; TODO (deftest linked-ht ()
+(deftest linked-ht ()
+  (let ((ht (make-linked-hash-table)))
+    (sethash-linked :foo ht 42)
+    (sethash-linked :bar ht 43)
+    (sethash-linked :baz ht 44)
+    (should be equal '(42 43 44)
+            (loop :for cur := (linked-hash-table-head ht)
+                    :then (linked-hash-table-item-next cur)
+                  :collect (linked-hash-table-item-val cur)
+                  :until (eql cur (linked-hash-table-tail ht))))))
 
 (defmethod mapkv (fn (ht linked-hash-table))
   (let ((rez (make-linked-hash-table
@@ -179,8 +193,6 @@
       (let ((k (rtl:? item 'key)))
         (sethash-linked k rez (funcall fn k (rtl:? item 'val)))))
     rez))
-
-;; TODO (deftest mapkv ()
 
 (defun content-address (object)
   (sha1:sha1-hex (with-output-to-string (out)
@@ -231,15 +243,13 @@
 (deftest content-adressing ()
   (let ((repo (make-hash-table :test 'equal))
         (repo2 (make-hash-table :test 'equal)))
-    (should be string=
-            "test"
-            "514BE1254CC9825EE125651650B5F9F6CF5C55D9"
-            (ca-add-object "test" *repo*))
+    (should be string= "test" "514BE1254CC9825EE125651650B5F9F6CF5C55D9"
+            (ca-add-object "test" repo))
     (should be string= "test"
             (gethash "514BE1254CC9825EE125651650B5F9F6CF5C55D9" repo))
     (ca-add-object2 "foo" repo2)
     (ca-add-object2 "bar" repo2)
     (should be string= "foo"
-            (gethash 138 (gethash "8AB31BA5528396616249FCA3879C734FF3440D" repo2)))
+            (gethash "8AB31BA5528396616249FCA3879C734FF3440D" (gethash 138 repo2)))
     (should be string= "bar"
-            (gethash 195 (gethash "F50F210FA56B285C6DA1B09C72782791BBB15A" repo2)))))
+            (gethash "F50F210FA56B285C6DA1B09C72782791BBB15A" (gethash 195 repo2)))))

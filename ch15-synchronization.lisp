@@ -1,6 +1,8 @@
 (in-package :progalgs)
 
 
+;; code protoypes
+
 (defstruct lf-queue
   (head (error "No HEAD.") :type cons)
   (tail (error "No TAIL.") :type cons))
@@ -18,32 +20,26 @@
 (defun lf-dequeue (queue)
   (loop (rtl:with ((head (lf-queue-head queue))
                    (next (cdr head)))
-                  (typecase next
-                    ;; the queue always has at least one element:
-                    ;; a +dummy+ node, thus a non-empty queue
-                    ;; will have at least two elements,
-                    ;; so a null NEXT means that the queue was empty
-                    (null (return (values nil
-                                          nil)))
-                    (cons (when (eq head (sb-ext:compare-and-swap
-                                          (lf-queue-head queue)
-                                          head next))
-                            (let ((value (car next)))
-                              (setf (car next) +dummy+)
-                              (return (values value
-                                              t)))))))))
-
-;; TODO (deftest lf-queue
+          (typecase next
+            ;; the queue always has at least one element:
+            ;; a +dummy+ node, thus a non-empty queue
+            ;; will have at least two elements,
+            ;; so a null NEXT means that the queue was empty
+            (null (return (values nil
+                                  nil)))
+            (cons (when (eq head (sb-ext:compare-and-swap
+                                  (lf-queue-head queue)
+                                  head next))
+                    (let ((value (car next)))
+                      (setf (car next) +dummy+)
+                      (return (values value
+                                      t)))))))))
 
 (defun mapreduce-merge-sort (list n &key (pred '<))
   (lparallel:pmap-reduce
    (lambda (x) (merge-sort x pred))            ; map step: solve a sub-problem
    (lambda (x y) (merge (type-of x) x y pred)) ; reduce step: combine solutions
    (group (ceiling (length list) n) list)))    ; divide data into sub-problems
-
-;; TODO (deftest mapreduce-merge-sort
-
-;; code protoypes
 
 (defmacro cas (place old new)
   `(when (eql ,place ,old)

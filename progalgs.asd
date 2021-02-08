@@ -1,7 +1,7 @@
 (in-package #:asdf-user)
 
 (defsystem #:progalgs
-  :version "1.0"
+  :version "1.1"
   :description "Code for the book 'Programming Algorithms in Lisp'"
   :author "Vsevolod Dyomkin <vseloved@gmail.com>"
   :maintainer "Vsevolod Dyomkin <vseloved@gmail.com>"

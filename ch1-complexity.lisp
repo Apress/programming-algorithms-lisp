@@ -12,5 +12,5 @@
 
 (deftest mat-max ()
   (should be null (mat-max #2A()))
-  (shoould be = 42 (mat-max #2A((42))))
+  (should be = 42 (mat-max #2A((42))))
   (should be = 6 (mat-max #2A((1 2 3) (4 5 6)))))

@@ -25,8 +25,8 @@
     (aref fib i)))
 
 (deftest fib ()
-  (should be = 165580141 (naive-fib 40))
-  (should be = 433494437 (naive-fib 42))
+  (should be = (fib 20) (naive-fib 20))
+  (should be = (fib 22) (naive-fib 22))
   (should be = 165580141 (fib 40))
   (should be = 433494437 (fib 42))
   (should be = 165580141 (bottom-up-fib 40))
@@ -37,10 +37,10 @@
     (let ((word (rtl:slice str 0 (1+ i))))
       (when (rtl:? dict word)
         (return (rtl:cond-it
-                 ((= (1+ i) (length str))
-                  word)
-                 ((shortest-first-restore-spaces dict (rtl:slice str (1+ i)))
-                  (format nil "~A ~A" word rtl:it))))))))
+                  ((= (1+ i) (length str))
+                   word)
+                  ((shortest-first-restore-spaces dict (rtl:slice str (1+ i)))
+                   (format nil "~A ~A" word rtl:it))))))))
 
 
 
@@ -50,15 +50,14 @@
       (when (rtl:in# word dict)
         (when (= (1+ i) (length str))
           (return word))
-        (rtl:when-it (bt-shortest-first-restore-spaces
-                      dict (slice str (1+ i)))
-                     (return (format nil "~A ~A" word rtl:it)))))))
+        (rtl:when-it (bt-shortest-first-restore-spaces dict (rtl:slice str (1+ i)))
+          (return (format nil "~A ~A" word rtl:it)))))))
 
 (defun dp-restore-spaces (dict str)
   (let ((dp (make-array (1+ (length str)) :initial-element nil))
         ;; in the production implementation, the following calculation
         ;; should be performed at the pre-processing stage
-        (w (reduce 'max (mapcar 'length (keys dict))))
+        (w (reduce 'max (mapcar 'length (rtl:keys dict))))
         (begs (list))
         (rez (list)))
     ;; the outer loop tries to find the next word
@@ -78,7 +77,7 @@
     (do ((i (length str) (aref dp i)))
         ((null (aref dp i)))
       (push (rtl:slice str (aref dp i) i) rez))
-    (strjoin #\Space rez)))
+    (rtl:strjoin #\Space rez)))
   
 (deftest restore-spaces ()
   (let ((dict (rtl:hash-set 'equal "a" "i" "at" "is" "hi" "ate"
@@ -89,20 +88,21 @@
     (should be string= "this is a test"
             (dp-restore-spaces dict "thisisatest"))))
 
-(defun tj-penalty (limit length)
+(defun tj-penalty (length limit)
   (if (<= length limit)
       (expt (- limit length) 3)
       most-positive-fixnum))
 
 (defun justify (limit str)
-  (rtl:with ((toks (reverse (split #\Space str)))
+  (rtl:with ((toks (reverse (rtl:split #\Space str)))
              (n (length toks))
              (penalties (make-array n))
              (backptrs (make-array n))
              (lengths (make-array n)))
     ;; forward pass (from the end of the string)
     (rtl:doindex (i tok toks)
-      (let ((len (+ (length tok) (max 0 (aref lengths (1- i))))))
+      (let ((len (+ (length tok) (if (plusp i) (max 0 (aref lengths (1- i)))
+                                     0))))
         (setf (aref lengths i) (1+ len))
         (if (<= len limit)
             (setf (aref penalties i) (tj-penalty len limit)
@@ -121,19 +121,39 @@
                                                        arg j)))))
               (setf (aref penalties i) min
                     (aref backptrs  i) arg)))))
-            ;; backward pass (decoding)
-            (loop :for end := (1- n) :then beg
-                  :for beg := (aref backptrs end)
-                  :do (fmt "~A~%"
-                           (rtl:strjoin #\Space (reverse (subseq toks 
-                                                                 (1+ beg)
-                                                                 (1+ end)))))
-                  :until (= -1 beg))))
+    ;; backward pass (decoding)
+    (with-output-to-string (out)
+      (loop :for end := (1- n) :then beg
+            :for beg := (aref backptrs end)
+            :do ;; if there's no path some words were longer thn the limit
+                (unless beg (return-from justify))
+                (format out "~A~%"
+                        (rtl:strjoin #\Space (reverse (subseq toks 
+                                                              (1+ beg)
+                                                              (1+ end)))))
+            :until (= -1 beg)))))
 
 (deftest justify ()
-  (should be string=
-          "" ; TODO
-          (justify "Common Lisp is the modern, multi-paradigm, high-performance, compiled, ANSI-standardized, most prominent descendant of the long-running family of Lisp programming languages.")))
+  (let ((str "Common Lisp is the modern, multi-paradigm, high-performance, compiled, ANSI-standardized, most prominent descendant of the long-running family of Lisp programming languages."))
+    (should be null (justify 0 str))
+    (should be null (justify 10 str))
+    (should be string= "Common Lisp
+is the modern,
+multi-paradigm,
+high-performance,
+compiled,
+ANSI-standardized,
+most prominent
+descendant of the
+long-running family
+of Lisp programming
+languages.
+" (justify 20 str))
+    (should be string= "Common Lisp is the modern, multi-paradigm,
+high-performance, compiled, ANSI-standardized,
+most prominent descendant of the long-running
+family of Lisp programming languages.
+" (justify 50 str))))
 
 (defun lev-dist (s1 s2 &optional 
                          (i1 (1- (length s1)))
@@ -208,7 +228,8 @@
 
 (deftest alignment ()
   (should be = 5 (lev-dist "democracy" "remorse"))
-  (should be string= "d e m o c r a c y
-x | | | ↑ | ↑ x x
-r e m o . r . s e"
+  (should print-to *standard-output* "d e m o c r a c y 
+x | | | ↑ | ↑ x x 
+r e m o . r . s e 
+"
           (align "democracy" "remorse")))

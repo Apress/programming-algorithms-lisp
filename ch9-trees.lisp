@@ -39,31 +39,37 @@
     (post-dfs fn child))
   (funcall fn (key node)))
 
-;; TODO (deftest dfs ()
-;; (dfs-node 'print *tree*)
-;; "a" 
-;; "b" 
-;; "d" 
-;; "e" 
-;; "c" 
-;; "f"
-;; (dfs-list 'print '(defun foo (bar)
-;;           "Foo function."
-;;           (baz bar)))
-;; DEFUN 
-;; FOO 
-;; BAR 
-;; "Foo function." 
-;; BAZ 
-;; BAR
-;;
-;; (post-dfs 'print *tree*)
-;; "d" 
-;; "e" 
-;; "b" 
-;; "f" 
-;; "c" 
-;; "a" 
+(deftest dfs ()
+  (let ((tree (rtl:with ((f (make-tree-node :key "f"))
+                         (e (make-tree-node :key "e"))
+                         (d (make-tree-node :key "d"))
+                         (c (make-tree-node :key "c" :children (list f)))
+                         (b (make-tree-node :key "b" :children (list d e))))
+                (make-tree-node :key "a"
+                                :children (list b c)))))
+    (should print-to *standard-output* "
+\"a\" 
+\"b\" 
+\"d\" 
+\"e\" 
+\"c\" 
+\"f\" " (dfs-node 'print tree))
+    (should print-to *standard-output* "
+DEFUN 
+FOO 
+BAR 
+\"Foo function.\" 
+BAZ 
+BAR " (dfs-list 'print '(defun foo (bar)
+                        "Foo function."
+                        (baz bar))))
+    (should print-to *standard-output* "
+\"d\" 
+\"e\" 
+\"b\" 
+\"f\" 
+\"c\" 
+\"a\" " (post-dfs 'print tree))))
 
 
 (defun bfs (fn nodes)
@@ -75,15 +81,21 @@
     (when next-level
       (bfs fn (reverse next-level)))))
 
-;; TODO (deftest bfs ()
-;; (bfs 'print *tree*)
-;; "a" 
-;; "b" 
-;; "c" 
-;; "d" 
-;; "e" 
-;; "f" 
-
+(deftest bfs ()
+  (let ((tree (rtl:with ((f (make-tree-node :key "f"))
+                         (e (make-tree-node :key "e"))
+                         (d (make-tree-node :key "d"))
+                         (c (make-tree-node :key "c" :children (list f)))
+                         (b (make-tree-node :key "b" :children (list d e))))
+                (make-tree-node :key "a"
+                                :children (list b c)))))
+    (should print-to *standard-output* "
+\"a\" 
+\"b\" 
+\"c\" 
+\"d\" 
+\"e\" 
+\"f\" " (bfs 'print tree))))
 
 (defstruct (bst-node (:conc-name nil)
                      (:print-object (lambda (node out)
@@ -126,28 +138,28 @@
         (let ((chain (cons root chain)))
           (cond ((= item key) (values root
                                       chain))
-                ((< item key) (st-search item lt chain))
-                ((> item key) (st-search item rt chain)))))
+                ((< item key) (node-chain item lt chain))
+                ((> item key) (node-chain item rt chain)))))
       (values nil
               chain)))
 
 (defun st-search (item root)
   (rtl:with ((node chain (node-chain item root)))
-            (when node
-              (apply 'splay chain))))
+    (values (when node (apply 'splay chain))
+            chain)))
 
 (defun st-insert (item root)
   (assert root nil "Can't insert item into a null tree")
   (rtl:with ((node chain (st-search item root)))
-            (unless node
-              (let ((parent (first chain)))
-                ;; here, we use the property of the := expression
-                ;; that it returns the item being set
-                (push (setf (rtl:? parent (if (> (key parent) item)
-                                              'lt
-                                              'rt))
-                            (make-bst-node :key item))
-                      chain)))
+    (unless node
+      (let ((parent (first chain)))
+        ;; here, we use the property of the := expression
+        ;; that it returns the item being set
+        (push (setf (rtl:? parent (if (> (key parent) item)
+                                      'lt
+                                      'rt))
+                    (make-bst-node :key item))
+              chain)))
             (apply 'splay chain)))
 
 (defun idir (dir)
@@ -191,73 +203,100 @@
 (defun st-update (old new root)
   (st-insert new (st-delete old root)))
 
-;; TODO (deftest splay-tree ()
-;; CL-USER> (defparameter *st* (make-bst-node :key 5))
-;; CL-USER> *st*
-;; [5--]
-;; CL-USER> (pprint-bst (setf *st* (st-insert 1 *st*)))
-;; 1
-;; ├──.
-;; └── 5
-;; CL-USER> (pprint-bst (setf *st* (st-insert 10 *st*)))
-;; 10
-;; ├── 1
-;; │    ├── .
-;; │    └── 5
-;; └── .
-;; CL-USER> (pprint-bst (setf *st* (st-insert 3 *st*)))
-;; 3
-;; ├── 1
-;; └── 10
-;; ├── .
-;; └── 5
-;; CL-USER> (pprint-bst (setf *st* (st-insert 7 *st*)))
-;; 7
-;; ├── 3
-;; │    ├── 1
-;; │    └── 5
-;; └── 10
-;; CL-USER> (pprint-bst (setf *st* (st-insert 8 *st*)))
-;; 8
-;; ├── 7
-;; │    ├── 3
-;; │    │    ├── 1
-;; │    │    └── 5
-;; │    └── .
-;; └── 10
-;; CL-USER> (pprint-bst (setf *st* (st-insert 2 *st*)))
-;; 2
-;; ├── 1
-;; └── 8
-;; ├── 7
-;; │    ├── 3
-;; │    │    ├── .
-;; │    │    └── 5
-;; │    └── .
-;; └── 10
-;; CL-USER> (pprint-bst (setf *st* (st-insert 4 *st*)))
-;; 4
-;; ├── 2
-;; │    ├── 1
-;; │    └── 3
-;; └── 8
-;; ├── 7
-;; │    ├── 5
-;; │    └── .
-;; └── 10
-;; CL-USER> *st*
-;; [4-[2-[1--]-[3--]]-[8-[7-[5--]-]-[10--]]]
+(defun pprint-bst (node &optional (level 0) (skip-levels (make-hash-table)))
+  (when (= 0 level)
+    (format t "~A~%" (key node)))
+  (let ((term (make-bst-node :key #\.)))
+    (when (or (lt node) (rt node))
+      (rtl:doindex (i child (remove nil (list (or (lt node) term)
+                                              (or (rt node) term))))
+        (let ((last-child-p (= 1 i)))
+          (dotimes (j level)
+            (format t "~C    " (if (gethash j skip-levels) #\Space #\│)))
+          (format t "~C── ~A~%"
+                  (if last-child-p #\└ #\├)
+                  (key child))
+          (:= (gethash level skip-levels) last-child-p)
+          (unless (eql child term)
+            (pprint-bst child
+                        (1+ level)
+                        skip-levels)))))))
 
-;; CL-USER> (pprint-bst (st-search 5 *st*))
-;; 5
-;; ├── 4
-;; │    ├── 2
-;; │    │    ├── 1
-;; │    │    └── 3
-;; │    └── .
-;; └── 8
-;; ├── 7
-;; └── 10
+(deftest splay-tree ()
+  (let ((st (make-bst-node :key 5)))
+    (should print-to *standard-output* "
+[5--] "
+            (print st))
+    (setf st (st-insert 1 st))
+    (should print-to *standard-output* "1
+├── .
+└── 5
+" (pprint-bst st))
+    (setf st (st-insert 10 st))
+    (should print-to *standard-output* "10
+├── 1
+│    ├── .
+│    └── 5
+└── .
+" (pprint-bst st))
+    (setf st (st-insert 3 st))
+    (should print-to *standard-output* "3
+├── 1
+└── 10
+     ├── 5
+     └── .
+" (pprint-bst st))
+    (setf st (st-insert 7 st))
+    (should print-to *standard-output* "7
+├── 3
+│    ├── 1
+│    └── 5
+└── 10
+" (pprint-bst st))
+    (setf st (st-insert 8 st))
+    (should print-to *standard-output* "8
+├── 7
+│    ├── 3
+│    │    ├── 1
+│    │    └── 5
+│    └── .
+└── 10
+"(pprint-bst st))
+    (setf st (st-insert 2 st))
+    (should print-to *standard-output* "2
+├── 1
+└── 8
+     ├── 7
+     │    ├── 3
+     │    │    ├── .
+     │    │    └── 5
+     │    └── .
+     └── 10
+"(pprint-bst st))
+    (setf st (st-insert 4 st))
+    (should print-to *standard-output* "4
+├── 2
+│    ├── 1
+│    └── 3
+└── 8
+     ├── 7
+     │    ├── 5
+     │    └── .
+     └── 10
+"(pprint-bst st))
+    (should print-to *standard-output* "
+[4-[2-[1--]-[3--]]-[8-[7-[5--]-]-[10--]]] "
+            (print st))
+    (should print-to *standard-output* "5
+├── 4
+│    ├── 2
+│    │    ├── 1
+│    │    └── 3
+│    └── .
+└── 8
+     ├── 7
+     └── 10
+" (pprint-bst (st-search 5 st)))))
  
 
 (defun hparent (i)
@@ -349,14 +388,13 @@
       (heap-down vec 0 last)))
   vec)
 
-;; TODO (deftest heap ()
-;; CL-USER> (check-heap #(10 5 8 2 3 7 1 9))
-;; Left child (9) is > parent at position 3 (2).
-;; [Condition of type SIMPLE-ERROR]
-;; CL-USER> (check-heap (draw-heap (heapify #(1 22 10 5 3 7 8 9 7 13))))
-;; #(22 13 10 9 3 7 8 5 7 1)
-;; CL-USER> (heapsort #(1 22 10 5 3 7 8 9 7 13))
-;; #(1 3 5 7 7 8 9 10 13 22)
+(deftest heap ()
+  (should signal simple-error
+          (check-heap #(10 5 8 2 3 7 1 9)))
+  (should be equalp #(22 13 10 9 3 7 8 5 7 1)
+          (check-heap (heapify #(1 22 10 5 3 7 8 9 7 13))))
+  (should be equalp #(1 3 5 7 7 8 9 10 13 22)
+          (heapsort #(1 22 10 5 3 7 8 9 7 13))))
 
 (defstruct (tr-node (:conc-name nil))
   val
@@ -390,69 +428,21 @@
                      (setf root child))))
     (setf (val root) val)))
 
-;; TODO (deftest trie ()
-;; CL-USER> (defparameter *trie* (make-tr-node))
-;; *TRIE*
-;; CL-USER> *trie*
-;; #S(TR-NODE :VAL NIL :CHILDREN NIL)
-
-;; CL-USER> (tr-lookup "word" *trie*)
-;; NIL
-;; CL-USER> (tr-add "word" 42 *trie*)
-;; 42
-;; CL-USER> *trie*
-;; #S(TR-NODE
-;;    :VAL NIL
-;;    :CHILDREN
-;;    ((#\w
-;;      . #S(TR-NODE
-;;           :VAL NIL
-;;           :CHILDREN
-;;           ((#\o
-;;             . #S(TR-NODE
-;;                  :VAL NIL
-;;                  :CHILDREN
-;;                  ((#\r
-;;                    . #S(TR-NODE
-;;                         :VAL NIL
-;;                         :CHILDREN
-;;                         ((#\d
-;;                           . #S(TR-NODE
-;;                                :VAL 42
-;;                                :CHILDREN NIL)))))))))))))
-;; CL-USER> (tr-lookup "word" *trie*)
-;; 42
-;; CL-USER> (tr-add "word" :foo *trie*)
-
-;; There was already a value at key: 42
-;; [Condition of type SIMPLE-ERROR]
-;; :FOO
-;; CL-USER> (tr-add "we" :baz *trie*)
-;; :BAZ
-;; CL-USER> *trie*
-;; #S(TR-NODE
-;;    :VAL NIL
-;;    :CHILDREN
-;;    ((#\w
-;;      . #S(TR-NODE
-;;           :VAL NIL
-;;           :CHILDREN
-;;           ((#\e . #S(TR-NODE
-;;                      :VAL :BAZ 
-;;                      :CHILDREN NIL))
-;;            (#\o . #S(TR-NODE
-;;                      :VAL NIL
-;;                      :CHILDREN
-;;                      ((#\r
-;;                        . #S(TR-NODE
-;;                             :VAL NIL
-;;                             :CHILDREN
-;;                             ((#\k
-;;                               . #S(TR-NODE
-;;                                    :VAL :BAR
-;;                                    :CHILDREN NIL))
-;;                              (#\d
-;;                               . #S(TR-NODE
-;;                                    :VAL :FOO
-;;                                    :CHILDREN NIL)))))))))))))
+(deftest trie ()
+  (let ((trie (make-tr-node)))
+    (should be equalp trie
+            (read-from-string "#S(TR-NODE :VAL NIL :CHILDREN NIL)"))
+    (should be null (tr-lookup "word" trie))
+    (should be = 42 (tr-add "word" 42 trie))
+    (should be eql #\w (caar (children trie)))
+    (should be eql #\o (caar (children (cdar (children trie)))))
+    (should be eql #\r (caar (children (cdar (children
+                                              (cdar (children trie)))))))
+    (should be eql #\d (caar (children (cdar (children
+                                              (cdar (children
+                                                     (cdar (children trie)))))))))
+    (should be = 42 (tr-lookup "word" trie))
+    (should signal simple-error (tr-add "word" :foo trie))
+    (should be eql :baz (tr-add "we" :baz trie))
+    (should be = 2 (length (children (cdar (children trie)))))))
 

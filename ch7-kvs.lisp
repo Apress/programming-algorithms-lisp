@@ -13,7 +13,10 @@
                                  alist)))
         :finally (return alist)))
 
-;; TODO (deftest alist-del ()
+(deftest alist-del ()
+  (should be null (alist-del :foo (list (cons :foo 42))))
+  (should be equal '((:bar . :baz))
+          (alist-del :foo (list (cons :foo 42) (cons :bar :baz)))))
 
 (defun start-memoizing (fn)
   (stop-memoizing fn)
@@ -32,10 +35,10 @@
   ;; the value of its first argument to an implicitly created variable IT
   ;; and evaluates the body when IT isn't null
   (rtl:when-it (get fn :fn)
-               (setf (symbol-function fn) rtl:it
-                     (get fn :fn) nil)))
+    (setf (symbol-function fn) rtl:it
+          (get fn :fn) nil)))
 
-;; TODO (deftest memoization ()
+;; TODO: add memoization tests
 
 (defun find-candidate-second-chance (bitmap)
   (declare (type bit-vector bitmap))
