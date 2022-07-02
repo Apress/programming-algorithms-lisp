@@ -2,7 +2,12 @@
 
 (defun dwim-map (fn seq &rest seqs)
   "A thin wrapper over MAP that uses the type of the first SEQ for the result."
-  (apply 'map (type-of seq) fn seqs))
+  (apply 'map (type-of seq) fn (cons seq seqs)))
+
+(deftest dwim-map ()
+  (should be equal '(5 7 9)
+          (dwim-map '+ '(1 2 3)
+                       '(4 5 6))))
 
 (defun simple-mapcar-v1 (fn list)
   (let ((rez (list)))
@@ -32,7 +37,7 @@
 (defun our-cons2 (data list)
   (when (null list) (setf list (make-our-own-list)))
   (let ((new-head (make-list-cell2
-                   :data data 
+                   :data data
                    :next (rtl:? list 'head))))
     (when (rtl:? list 'head)
       (setf (rtl:? list 'head 'prev) new-head))
