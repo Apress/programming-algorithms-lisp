@@ -18,6 +18,21 @@
   (should be equal '((:bar . :baz))
           (alist-del :foo (list (cons :foo 42) (cons :bar :baz)))))
 
+(defmethod generic-elt ((obj vector) key &rest keys)
+  (declare (ignore keys))
+  ;; Python-like handling of negative indices as offsets from the end
+  (when (minusp key) (setf key (+ (length obj) key)))
+  (aref obj key))
+
+(deftest generic-elt-vector ()
+  (let ((vec #(1 2 3)))
+    (should be equal 1 (generic-elt vec 0))
+    (should be equal 2 (generic-elt vec 1))
+    (should be equal 3 (generic-elt vec 2))
+    (should be equal (generic-elt vec 0) (generic-elt vec -3))
+    (should be equal (generic-elt vec 1) (generic-elt vec -2))
+    (should be equal (generic-elt vec 2) (generic-elt vec -1))))
+
 (defun start-memoizing (fn)
   (stop-memoizing fn)
   (setf (symbol-function fn)
